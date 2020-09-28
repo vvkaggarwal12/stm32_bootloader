@@ -34,6 +34,30 @@ extern "C" {
 #include "ff.h"
 #include "ff_gen_drv.h"
 #include "usbh_diskio.h"
+
+typedef enum {
+  MSC_DEMO_IDLE = 0,
+  MSC_DEMO_WAIT,
+  MSC_DEMO_FILE_OPERATIONS,
+  MSC_DEMO_EXPLORER,
+  MSC_REENUMERATE,
+}MSC_Demo_State;
+
+typedef struct _DemoStateMachine {
+  __IO MSC_Demo_State state;
+  __IO uint8_t        select;
+}MSC_DEMO_StateMachine;
+
+typedef enum {
+  APPLICATION_IDLE = 0,
+  APPLICATION_READY,
+  APPLICATION_DISCONNECT,
+}MSC_ApplicationTypeDef;
+
+extern USBH_HandleTypeDef hUSB_Host;
+extern FATFS USBH_fatfs;
+extern MSC_ApplicationTypeDef Appli_state;
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
