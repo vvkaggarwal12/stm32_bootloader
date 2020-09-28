@@ -29,7 +29,11 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h7xx_hal.h"
-
+#include "usbh_core.h"
+#include "usbh_msc.h"
+#include "ff.h"
+#include "ff_gen_drv.h"
+#include "usbh_diskio.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
