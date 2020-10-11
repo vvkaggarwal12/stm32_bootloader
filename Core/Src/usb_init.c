@@ -21,13 +21,7 @@ extern uint8_t MSC_File_Operations(void);
 char USBDISKPath[4]; /* USB Host logical drive path */
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 MSC_ApplicationTypeDef Appli_state = APPLICATION_IDLE;
-FATFS USBH_fatfs;
-FIL MyFile;
-FRESULT res;
-uint32_t bytesWritten;
-uint8_t rtext[200];
-uint8_t wtext[] = "USB Host Library : Mass Storage application";
-
+static FATFS USBH_fatfs;
 USBH_HandleTypeDef hUSB_Host;
 
 void usb_initialize(void) {
@@ -45,10 +39,13 @@ void usb_initialize(void) {
 	HAL_PWREx_EnableUSBVoltageDetector();
 }
 
-void usb_process(void) {
+void usbhost_process(void) {
 	USBH_Process(&hUSB_Host);
 }
 
+uint8_t IsUSBHostConnected(void) {
+	return hUSB_Host.device.is_connected;
+}
 /**
  * @brief  User Process
  * @param  phost: Host Handle
@@ -92,55 +89,55 @@ static void USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id) {
  * @param  None
  * @retval None
  */
-uint8_t MSC_File_Operations(void) {
-	uint16_t bytesread;
-	uint8_t retvalue = 0;
-
-	LCD_UsrLog("INFO : FatFs Initialized \n");
-
-	if (f_open(&MyFile, "0:USBHost.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
-		LCD_ErrLog("Cannot Open 'USBHost.txt' file \n");
-		retvalue = 1;
-	} else {
-		LCD_UsrLog("INFO : 'USBHost.txt' opened for write  \n");
-		res = f_write(&MyFile, wtext, sizeof(wtext), (void*) &bytesWritten);
-		f_close(&MyFile);
-
-		if ((bytesWritten == 0) || (res != FR_OK)) /*EOF or Error*/
-		{
-			LCD_ErrLog("Cannot Write on the  'USBHost.txt' file \n");
-			retvalue = 1;
-		} else {
-			if (f_open(&MyFile, "0:USBHost.txt", FA_READ) != FR_OK) {
-				LCD_ErrLog("Cannot Open 'USBHost.txt' file for read.\n");
-				retvalue = 1;
-			} else {
-				LCD_UsrLog("INFO : Text written on the 'USBHost.txt' file \n");
-
-				res = f_read(&MyFile, rtext, sizeof(rtext), (void*) &bytesread);
-
-				if ((bytesread == 0) || (res != FR_OK)) /*EOF or Error*/
-				{
-					LCD_ErrLog("Cannot Read from the  'USBHost.txt' file \n");
-					retvalue = 1;
-				} else {
-					LCD_UsrLog("Read Text : \n");
-					LCD_DbgLog((char*) rtext);
-					LCD_DbgLog("\n");
-				}
-				f_close(&MyFile);
-			}
-			/* Compare read data with the expected data */
-			if ((bytesread == bytesWritten)) {
-				LCD_UsrLog("INFO : FatFs data compare SUCCES");
-				LCD_UsrLog("\n");
-			} else {
-				LCD_ErrLog("FatFs data compare ERROR");
-				LCD_ErrLog("\n");
-				retvalue = 1;
-			}
-		}
-	}
-	return (retvalue);
-}
+//uint8_t MSC_File_Operations(void) {
+//	uint16_t bytesread;
+//	uint8_t retvalue = 0;
+//
+//	LCD_UsrLog("INFO : FatFs Initialized \n");
+//
+//	if (f_open(&MyFile, "0:USBHost.txt", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
+//		LCD_ErrLog("Cannot Open 'USBHost.txt' file \n");
+//		retvalue = 1;
+//	} else {
+//		LCD_UsrLog("INFO : 'USBHost.txt' opened for write  \n");
+//		res = f_write(&MyFile, wtext, sizeof(wtext), (void*) &bytesWritten);
+//		f_close(&MyFile);
+//
+//		if ((bytesWritten == 0) || (res != FR_OK)) /*EOF or Error*/
+//		{
+//			LCD_ErrLog("Cannot Write on the  'USBHost.txt' file \n");
+//			retvalue = 1;
+//		} else {
+//			if (f_open(&MyFile, "0:USBHost.txt", FA_READ) != FR_OK) {
+//				LCD_ErrLog("Cannot Open 'USBHost.txt' file for read.\n");
+//				retvalue = 1;
+//			} else {
+//				LCD_UsrLog("INFO : Text written on the 'USBHost.txt' file \n");
+//
+//				res = f_read(&MyFile, rtext, sizeof(rtext), (void*) &bytesread);
+//
+//				if ((bytesread == 0) || (res != FR_OK)) /*EOF or Error*/
+//				{
+//					LCD_ErrLog("Cannot Read from the  'USBHost.txt' file \n");
+//					retvalue = 1;
+//				} else {
+//					LCD_UsrLog("Read Text : \n");
+//					LCD_DbgLog((char*) rtext);
+//					LCD_DbgLog("\n");
+//				}
+//				f_close(&MyFile);
+//			}
+//			/* Compare read data with the expected data */
+//			if ((bytesread == bytesWritten)) {
+//				LCD_UsrLog("INFO : FatFs data compare SUCCES");
+//				LCD_UsrLog("\n");
+//			} else {
+//				LCD_ErrLog("FatFs data compare ERROR");
+//				LCD_ErrLog("\n");
+//				retvalue = 1;
+//			}
+//		}
+//	}
+//	return (retvalue);
+//}
 

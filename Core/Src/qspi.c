@@ -39,7 +39,6 @@
  * @brief  MT25TL01G Configuration
  */
 #define MT25TL01G_FLASH_SIZE                  0x1000000 /* 2 * 512 MBits => 2 * 64MBytes => 128MBytes*/
-#define MT25TL01G_SECTOR_SIZE                 0x10000   /* 2 * 1024 sectors of 64KBytes */
 #define MT25TL01G_SUBSECTOR_SIZE              0x1000    /* 2 * 16384 subsectors of 4kBytes */
 #define MT25TL01G_PAGE_SIZE                   0x100     /* 2 * 262144 pages of 256 bytes */
 
@@ -211,7 +210,7 @@
 #define QSPI_BK2_D1_GPIO_CLK_ENABLE()  __HAL_RCC_GPIOH_CLK_ENABLE()
 #define QSPI_BK2_D2_GPIO_CLK_ENABLE()  __HAL_RCC_GPIOG_CLK_ENABLE()
 #define QSPI_BK2_D3_GPIO_CLK_ENABLE()  __HAL_RCC_GPIOG_CLK_ENABLE()
-
+#define QSPI_MDMA_CLK_ENABLE()         __HAL_RCC_MDMA_CLK_ENABLE()
 #define QSPI_FORCE_RESET()         __HAL_RCC_QSPI_FORCE_RESET()
 #define QSPI_RELEASE_RESET()       __HAL_RCC_QSPI_RELEASE_RESET()
 
@@ -267,15 +266,47 @@ uint32_t InitializeExternalFlash(void) {
 	if (QSPI_Startup(QSPI_MODE) != MEMORY_OK) {
 		return MEMORY_ERROR;
 	}
+	StatusMatch = 0x00;
+	if (QSPI_AutoPollingMemReady(&QSPIHandle, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
+	while(StatusMatch == 0);
+	return MEMORY_OK;
+}
+
+uint32_t ExternalFlashMemoryMapped(void) {
+	/* Configure automatic polling mode to wait the memory is ready */
+	if (QSPI_AutoPollingMemReady(&QSPIHandle, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
+
+	/* Configuration of the dummy cycles on QSPI memory side */
+	if (QSPI_DummyCyclesCfg(&QSPIHandle) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
+
+	if (QSPI_EnableMemoryMappedMode(&QSPIHandle) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
 	return MEMORY_OK;
 }
 
 uint32_t ExternalFlashProgram(uint32_t address, uint8_t *buffer, uint32_t size) {
 	QSPI_CommandTypeDef sCommand;
 
+	sCommand.InstructionMode   = QSPI_INSTRUCTION_1_LINE;
+	sCommand.AddressSize       = QSPI_ADDRESS_32_BITS;
+	sCommand.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+	sCommand.DdrMode           = QSPI_DDR_MODE_DISABLE;
+	sCommand.DdrHoldHalfCycle  = QSPI_DDR_HHC_ANALOG_DELAY;
+	sCommand.SIOOMode          = QSPI_SIOO_INST_EVERY_CMD;
+    sCommand.Address     		= address;
+    sCommand.DummyCycles 		= 0;
+
 	/* Enable write operations ----------------------------------------- */
 	QSPI_WriteEnable(&QSPIHandle);
 
+	TxCplt = 0;
 	/* Writing Sequence ------------------------------------------------ */
 	sCommand.Instruction = QUAD_IN_FAST_PROG_CMD;
 	sCommand.AddressMode = QSPI_ADDRESS_1_LINE;
@@ -290,14 +321,29 @@ uint32_t ExternalFlashProgram(uint32_t address, uint8_t *buffer, uint32_t size) 
 	if (HAL_QSPI_Transmit_IT(&QSPIHandle, buffer) != HAL_OK) {
 		return MEMORY_ERROR;
 	}
+	while(TxCplt == 0);
+	StatusMatch = 0x00;
+	if (QSPI_AutoPollingMemReady(&QSPIHandle,
+			HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
+	while(StatusMatch == 0);
 	return MEMORY_OK;
 }
 
 uint32_t ExternalFlashErase(uint32_t address) {
 	QSPI_CommandTypeDef sCommand;
 
+	CmdCplt = 0;
 	/* Enable write operations ------------------------------------------- */
 	QSPI_WriteEnable(&QSPIHandle);
+
+	sCommand.InstructionMode   = QSPI_INSTRUCTION_1_LINE;
+	sCommand.AddressSize       = QSPI_ADDRESS_32_BITS;
+	sCommand.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+	sCommand.DdrMode           = QSPI_DDR_MODE_DISABLE;
+	sCommand.DdrHoldHalfCycle  = QSPI_DDR_HHC_ANALOG_DELAY;
+	sCommand.SIOOMode          = QSPI_SIOO_INST_EVERY_CMD;
 
 	/* Erasing Sequence -------------------------------------------------- */
 	sCommand.Instruction = SECTOR_ERASE_CMD;
@@ -309,7 +355,13 @@ uint32_t ExternalFlashErase(uint32_t address) {
 	if (HAL_QSPI_Command_IT(&QSPIHandle, &sCommand) != HAL_OK) {
 		return MEMORY_ERROR;
 	}
-
+	while(CmdCplt == 0);
+	StatusMatch = 0x00;
+	if (QSPI_AutoPollingMemReady(&QSPIHandle,
+			HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != MEMORY_OK) {
+		return MEMORY_ERROR;
+	}
+	while(StatusMatch == 0);
 	return MEMORY_OK;
 }
 
@@ -349,60 +401,28 @@ uint32_t ExternalFlashRead(uint32_t address, uint8_t *buffer, uint32_t size) {
 static uint32_t QSPI_Startup(uint32_t Mode) {
 	QSPIHandle.Instance = QUADSPI;
 
-	/* Call the DeInit function to reset the driver */
-	if (HAL_QSPI_DeInit(&QSPIHandle) != HAL_OK) {
-		return MEMORY_ERROR;
-	}
-
-	/* System level initialization */
-	QSPI_MspInit();
-
 	/* QSPI initialization */
 	/* ClockPrescaler set to 1, so QSPI clock = 200MHz / (1+3) = 50MHz */
-	QSPIHandle.Init.ClockPrescaler = 3;
+	QSPIHandle.Init.ClockPrescaler = 1;
 	QSPIHandle.Init.FifoThreshold = 1;
 	QSPIHandle.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_HALFCYCLE;
-	QSPIHandle.Init.FlashSize = POSITION_VAL(MT25TL01G_FLASH_SIZE) - 1;
+	QSPIHandle.Init.FlashSize = 26;
 	QSPIHandle.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_3_CYCLE;
 	QSPIHandle.Init.ClockMode = QSPI_CLOCK_MODE_0;
 	QSPIHandle.Init.FlashID = QSPI_FLASH_ID_2;
 	QSPIHandle.Init.DualFlash = QSPI_DUALFLASH_ENABLE;
 
-	if (HAL_QSPI_Init(&QSPIHandle) != HAL_OK) {
-		return MEMORY_ERROR;
-	}
-
-	/* QSPI memory reset */
-	if (QSPI_ResetMemory(&QSPIHandle) != MEMORY_OK) {
-		return MEMORY_ERROR;
-	}
+    HAL_QSPI_DeInit(&QSPIHandle);
+    if (HAL_QSPI_Init(&QSPIHandle) != HAL_OK)
+    {
+    	return MEMORY_ERROR;
+    }
 
 	/* Set the QSPI memory in 4-bytes address mode */
 	if (QSPI_EnterFourBytesAddress(&QSPIHandle) != MEMORY_OK) {
 		return MEMORY_ERROR;
 	}
 
-	/* Configuration of the dummy cycles on QSPI memory side */
-	if (QSPI_DummyCyclesCfg(&QSPIHandle) != MEMORY_OK) {
-		return MEMORY_ERROR;
-	}
-
-#if (CODE_AREA == USE_QSPI)
-	/* Enable MemoryMapped mode */
-	if (QSPI_EnableMemoryMappedMode(&QSPIHandle) != MEMORY_OK) {
-		return MEMORY_ERROR;
-	}
-#elif (BINARY_AREA == USE_SPI_NOR)
-  if (QSPI_Copy(APPLICATION_ADDRESS, BINARY_BASE_OFFSET, BINARY_SIZE) != MEMORY_OK)
-  {
-    return MEMORY_ERROR;
-  }
-
-  if (QSPI_Shutdown() != MEMORY_OK)
-  {
-    return MEMORY_ERROR;
-  }
-#endif /* (CODE_AREA == USE_QSPI) */
 	return MEMORY_OK;
 }
 
@@ -492,15 +512,15 @@ static uint32_t QSPI_EnableMemoryMappedMode(QSPI_HandleTypeDef *hqspi) {
 	QSPI_MemoryMappedTypeDef s_mem_mapped_cfg;
 
 	/* Configure the command for the read instruction */
-	s_command.InstructionMode = QSPI_INSTRUCTION_4_LINES;
-	s_command.Instruction = QUAD_INOUT_FAST_READ_DTR_CMD; /* DTR QUAD INPUT/OUTPUT FAST READ and 4-BYTE DTR FAST READ commands */
-	s_command.AddressMode = QSPI_ADDRESS_4_LINES;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+	s_command.Instruction = QUAD_OUT_FAST_READ_CMD; /* DTR QUAD INPUT/OUTPUT FAST READ and 4-BYTE DTR FAST READ commands */
+	s_command.AddressMode = QSPI_ADDRESS_1_LINE;
 	s_command.AddressSize = QSPI_ADDRESS_32_BITS;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
 	s_command.DataMode = QSPI_DATA_4_LINES;
-	s_command.DummyCycles = MT25TL01G_DUMMY_CYCLES_READ_QUAD_DTR - 1;
-	s_command.DdrMode = QSPI_DDR_MODE_ENABLE;
-	s_command.DdrHoldHalfCycle = QSPI_DDR_HHC_HALF_CLK_DELAY;
+	s_command.DummyCycles = 10;
+	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+	s_command.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
 	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
 
 	/* Configure the memory mapped mode */
@@ -586,7 +606,7 @@ static uint32_t QSPI_EnterFourBytesAddress(QSPI_HandleTypeDef *hqspi) {
 	QSPI_CommandTypeDef s_command;
 
 	/* Initialize the command */
-	s_command.InstructionMode = QSPI_INSTRUCTION_4_LINES;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
 	s_command.Instruction = ENTER_4_BYTE_ADDR_MODE_CMD;
 	s_command.AddressMode = QSPI_ADDRESS_NONE;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
@@ -626,11 +646,11 @@ static uint32_t QSPI_DummyCyclesCfg(QSPI_HandleTypeDef *hqspi) {
 	uint16_t reg = 0;
 
 	/* Initialize the read volatile configuration register command */
-	s_command.InstructionMode = QSPI_INSTRUCTION_4_LINES;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
 	s_command.Instruction = READ_VOL_CFG_REG_CMD;
 	s_command.AddressMode = QSPI_ADDRESS_NONE;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
-	s_command.DataMode = QSPI_DATA_4_LINES;
+	s_command.DataMode = QSPI_DATA_1_LINE;
 	s_command.DummyCycles = 0;
 	s_command.NbData = 2;
 	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
@@ -657,7 +677,7 @@ static uint32_t QSPI_DummyCyclesCfg(QSPI_HandleTypeDef *hqspi) {
 	/* Update volatile configuration register (with new dummy cycles) */
 	s_command.Instruction = WRITE_VOL_CFG_REG_CMD;
 	MODIFY_REG(reg, 0xF0F0,
-			((MT25TL01G_DUMMY_CYCLES_READ_QUAD << 4) | (MT25TL01G_DUMMY_CYCLES_READ_QUAD << 12)));
+			((10 << 4) | (10 << 12)));
 
 	/* Configure the write volatile configuration register command */
 	if (HAL_QSPI_Command(hqspi, &s_command, HAL_QPSI_TIMEOUT_DEFAULT_VALUE)
@@ -684,7 +704,7 @@ static uint32_t QSPI_WriteEnable(QSPI_HandleTypeDef *hqspi) {
 	QSPI_AutoPollingTypeDef s_config;
 
 	/* Enable write operations */
-	s_command.InstructionMode = QSPI_INSTRUCTION_4_LINES;
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
 	s_command.Instruction = WRITE_ENABLE_CMD;
 	s_command.AddressMode = QSPI_ADDRESS_NONE;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
@@ -708,7 +728,7 @@ static uint32_t QSPI_WriteEnable(QSPI_HandleTypeDef *hqspi) {
 	s_config.AutomaticStop = QSPI_AUTOMATIC_STOP_ENABLE;
 
 	s_command.Instruction = READ_STATUS_REG_CMD;
-	s_command.DataMode = QSPI_DATA_4_LINES;
+	s_command.DataMode = QSPI_DATA_1_LINE;
 
 	if (HAL_QSPI_AutoPolling(hqspi, &s_command, &s_config,
 			HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
@@ -730,24 +750,25 @@ static uint32_t QSPI_AutoPollingMemReady(QSPI_HandleTypeDef *hqspi,
 	QSPI_AutoPollingTypeDef s_config;
 
 	/* Configure automatic polling mode to wait for memory ready */
-	s_command.InstructionMode = QSPI_INSTRUCTION_4_LINES;
+	memset(&s_command, 0x00, sizeof(s_command));
+	s_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
 	s_command.Instruction = READ_STATUS_REG_CMD;
 	s_command.AddressMode = QSPI_ADDRESS_NONE;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
-	s_command.DataMode = QSPI_DATA_4_LINES;
-	s_command.DummyCycles = 2;
+	s_command.DataMode = QSPI_DATA_1_LINE;
+	s_command.DummyCycles = 0;
 	s_command.DdrMode = QSPI_DDR_MODE_DISABLE;
 	s_command.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
 	s_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
 
 	s_config.Match = 0;
+	s_config.Mask = 0x0101;
 	s_config.MatchMode = QSPI_MATCH_MODE_AND;
+	s_config.StatusBytesSize = 2;
 	s_config.Interval = 0x10;
 	s_config.AutomaticStop = QSPI_AUTOMATIC_STOP_ENABLE;
-	s_config.Mask = MT25TL01G_SR_WIP | (MT25TL01G_SR_WIP << 8);
-	s_config.StatusBytesSize = 2;
 
-	if (HAL_QSPI_AutoPolling(hqspi, &s_command, &s_config, Timeout) != HAL_OK) {
+	if (HAL_QSPI_AutoPolling_IT(hqspi, &s_command, &s_config) != HAL_OK) {
 		return MEMORY_ERROR;
 	}
 
@@ -780,84 +801,121 @@ static uint8_t QSPI_EnterQPI(QSPI_HandleTypeDef *hqspi) {
 	return MEMORY_OK;
 }
 
-static void QSPI_MspInit(void) {
-	GPIO_InitTypeDef gpio_init_structure;
+void HAL_QSPI_MspInit(QSPI_HandleTypeDef *hqspi)
+{
+  GPIO_InitTypeDef gpio_init_structure;
 
-	/*##-1- Enable peripherals and GPIO Clocks #################################*/
-	/* Enable the QuadSPI memory interface clock */
-	QSPI_CLK_ENABLE();
-	/* Reset the QuadSPI memory interface */
-	QSPI_FORCE_RESET();
-	QSPI_RELEASE_RESET();
-	/* Enable GPIO clocks */
-	QSPI_CLK_GPIO_CLK_ENABLE();
-	QSPI_BK1_D0_GPIO_CLK_ENABLE();
-	QSPI_BK1_D1_GPIO_CLK_ENABLE();
-	/*#if (CODE_AREA == USE_QSPI)  */
-	QSPI_BK1_D2_GPIO_CLK_ENABLE();
-	QSPI_BK1_D3_GPIO_CLK_ENABLE();
-	/*#endif*/
-	QSPI_BK2_CS_GPIO_CLK_ENABLE();
-	QSPI_BK2_D0_GPIO_CLK_ENABLE();
-	QSPI_BK2_D1_GPIO_CLK_ENABLE();
-	/*#if (CODE_AREA == USE_QSPI)*/
-	QSPI_BK2_D2_GPIO_CLK_ENABLE();
-	QSPI_BK2_D3_GPIO_CLK_ENABLE();
-	/*#endif*/
-	/*##-2- Configure peripheral GPIO ##########################################*/
-	/* QSPI CLK GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_CLK_PIN;
-	gpio_init_structure.Mode = GPIO_MODE_AF_PP;
-	gpio_init_structure.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-	gpio_init_structure.Pull = GPIO_NOPULL;
-	gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
-	HAL_GPIO_Init(QSPI_CLK_GPIO_PORT, &gpio_init_structure);
+  /*##-1- Enable peripherals and GPIO Clocks #################################*/
+  /* Enable the QuadSPI memory interface clock */
+  QSPI_CLK_ENABLE();
+  /* Reset the QuadSPI memory interface */
+  QSPI_FORCE_RESET();
+  QSPI_RELEASE_RESET();
+  /* Enable GPIO clocks */
+  QSPI_CLK_GPIO_CLK_ENABLE();
+  QSPI_BK1_D0_GPIO_CLK_ENABLE();
+  QSPI_BK1_D1_GPIO_CLK_ENABLE();
+  QSPI_BK1_D2_GPIO_CLK_ENABLE();
+  QSPI_BK1_D3_GPIO_CLK_ENABLE();
 
-	/* QSPI CS GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_BK1_CS_PIN;
-	gpio_init_structure.Pull = GPIO_PULLUP;
-	gpio_init_structure.Alternate = GPIO_AF10_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK1_CS_GPIO_PORT, &gpio_init_structure);
+  QSPI_BK2_D0_GPIO_CLK_ENABLE();
+  QSPI_BK2_D1_GPIO_CLK_ENABLE();
+  QSPI_BK2_D2_GPIO_CLK_ENABLE();
+  QSPI_BK2_D3_GPIO_CLK_ENABLE();
+  /* Enable DMA clock */
+  QSPI_MDMA_CLK_ENABLE();
 
-	/* QSPI D0 GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_BK1_D0_PIN;
-	gpio_init_structure.Pull = GPIO_NOPULL;
-	gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK1_D0_GPIO_PORT, &gpio_init_structure);
+/*##-2- Configure peripheral GPIO ##########################################*/
+  /* QSPI CLK GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_CLK_PIN;
+  gpio_init_structure.Mode      = GPIO_MODE_AF_PP;
+  gpio_init_structure.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+  gpio_init_structure.Pull      = GPIO_NOPULL;
+  gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
+  HAL_GPIO_Init(QSPI_CLK_GPIO_PORT, &gpio_init_structure);
 
-	gpio_init_structure.Pin = QSPI_BK2_D0_PIN;
-	gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK2_D0_GPIO_PORT, &gpio_init_structure);
+  /* QSPI CS GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_BK1_CS_PIN;
+  gpio_init_structure.Pull      = GPIO_PULLUP;
+  gpio_init_structure.Alternate = GPIO_AF10_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK1_CS_GPIO_PORT, &gpio_init_structure);
 
-	/* QSPI D1 GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_BK1_D1_PIN;
-	gpio_init_structure.Alternate = GPIO_AF10_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK1_D1_GPIO_PORT, &gpio_init_structure);
+  /* QSPI D0 GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_BK1_D0_PIN;
+  gpio_init_structure.Pull      = GPIO_NOPULL;
+  gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK1_D0_GPIO_PORT, &gpio_init_structure);
 
-	gpio_init_structure.Pin = QSPI_BK2_D1_PIN;
-	gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK2_D1_GPIO_PORT, &gpio_init_structure);
+  gpio_init_structure.Pin       = QSPI_BK2_D0_PIN;
+  gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK2_D0_GPIO_PORT, &gpio_init_structure);
 
-	/* QSPI D2 GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_BK1_D2_PIN;
-	gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
-	HAL_GPIO_Init(QSPI_BK1_D2_GPIO_PORT, &gpio_init_structure);
+  /* QSPI D1 GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_BK1_D1_PIN;
+  gpio_init_structure.Alternate = GPIO_AF10_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK1_D1_GPIO_PORT, &gpio_init_structure);
 
-	gpio_init_structure.Pin = QSPI_BK2_D2_PIN;
-	HAL_GPIO_Init(QSPI_BK2_D2_GPIO_PORT, &gpio_init_structure);
+  gpio_init_structure.Pin       = QSPI_BK2_D1_PIN;
+  gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK2_D1_GPIO_PORT, &gpio_init_structure);
 
-	/* QSPI D3 GPIO pin configuration  */
-	gpio_init_structure.Pin = QSPI_BK1_D3_PIN;
-	HAL_GPIO_Init(QSPI_BK1_D3_GPIO_PORT, &gpio_init_structure);
+  /* QSPI D2 GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_BK1_D2_PIN;
+  gpio_init_structure.Alternate = GPIO_AF9_QUADSPI;
+  HAL_GPIO_Init(QSPI_BK1_D2_GPIO_PORT, &gpio_init_structure);
 
-	gpio_init_structure.Pin = QSPI_BK2_D3_PIN;
-	HAL_GPIO_Init(QSPI_BK2_D3_GPIO_PORT, &gpio_init_structure);
+  gpio_init_structure.Pin       = QSPI_BK2_D2_PIN;
+  HAL_GPIO_Init(QSPI_BK2_D2_GPIO_PORT, &gpio_init_structure);
 
-	/*##-3- Configure the NVIC for QSPI #########################################*/
-	/* NVIC configuration for QSPI interrupt */
-	HAL_NVIC_SetPriority(QUADSPI_IRQn, 0x0F, 0);
-	HAL_NVIC_EnableIRQ(QUADSPI_IRQn);
+  /* QSPI D3 GPIO pin configuration  */
+  gpio_init_structure.Pin       = QSPI_BK1_D3_PIN;
+  HAL_GPIO_Init(QSPI_BK1_D3_GPIO_PORT, &gpio_init_structure);
 
+  gpio_init_structure.Pin       = QSPI_BK2_D3_PIN;
+  HAL_GPIO_Init(QSPI_BK2_D3_GPIO_PORT, &gpio_init_structure);
+
+  /*##-3- Configure the NVIC for QSPI #########################################*/
+  /* NVIC configuration for QSPI interrupt */
+  HAL_NVIC_SetPriority(QUADSPI_IRQn, 0x0F, 0);
+  HAL_NVIC_EnableIRQ(QUADSPI_IRQn);
+
+}
+
+/**
+  * @brief QSPI MSP De-Initialization
+  *        This function frees the hardware resources used in this example:
+  *          - Disable the Peripheral's clock
+  *          - Revert GPIO and NVIC configuration to their default state
+  * @param hqspi: QSPI handle pointer
+  * @retval None
+  */
+void HAL_QSPI_MspDeInit(QSPI_HandleTypeDef *hqspi)
+{
+  /*##-1- Disable the NVIC for QSPI ###########################################*/
+  HAL_NVIC_DisableIRQ(QUADSPI_IRQn);
+
+  /*##-1- Disable peripherals ################################################*/
+  /* De-Configure QSPI pins */
+  HAL_GPIO_DeInit(QSPI_CLK_GPIO_PORT, QSPI_CLK_PIN);
+  HAL_GPIO_DeInit(QSPI_BK1_CS_GPIO_PORT, QSPI_BK1_CS_PIN);
+  HAL_GPIO_DeInit(QSPI_BK1_D0_GPIO_PORT, QSPI_BK1_D0_PIN);
+  HAL_GPIO_DeInit(QSPI_BK1_D1_GPIO_PORT, QSPI_BK1_D1_PIN);
+  HAL_GPIO_DeInit(QSPI_BK1_D2_GPIO_PORT, QSPI_BK1_D2_PIN);
+  HAL_GPIO_DeInit(QSPI_BK1_D3_GPIO_PORT, QSPI_BK1_D3_PIN);
+
+  HAL_GPIO_DeInit(QSPI_BK2_CS_GPIO_PORT, QSPI_BK2_CS_PIN);
+  HAL_GPIO_DeInit(QSPI_BK2_D0_GPIO_PORT, QSPI_BK2_D0_PIN);
+  HAL_GPIO_DeInit(QSPI_BK2_D1_GPIO_PORT, QSPI_BK2_D1_PIN);
+  HAL_GPIO_DeInit(QSPI_BK2_D2_GPIO_PORT, QSPI_BK2_D2_PIN);
+  HAL_GPIO_DeInit(QSPI_BK2_D3_GPIO_PORT, QSPI_BK2_D3_PIN);
+
+  /*##-3- Reset peripherals ##################################################*/
+  /* Reset the QuadSPI memory interface */
+  QSPI_FORCE_RESET();
+  QSPI_RELEASE_RESET();
+
+  /* Disable the QuadSPI memory interface clock */
+  QSPI_CLK_DISABLE();
 }
 
 /**
@@ -894,6 +952,16 @@ void HAL_QSPI_TxCpltCallback(QSPI_HandleTypeDef *hqspi) {
  */
 void HAL_QSPI_StatusMatchCallback(QSPI_HandleTypeDef *hqspi) {
 	StatusMatch++;
+}
+
+/**
+ * @brief  This function handles QUADSPI interrupt request.
+ * @param  None
+ * @retval None
+ */
+void QUADSPI_IRQHandler(void)
+{
+	HAL_QSPI_IRQHandler(&QSPIHandle);
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

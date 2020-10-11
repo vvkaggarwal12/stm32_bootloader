@@ -22,6 +22,7 @@
 #include "main.h"
 #include "usb_init.h"
 #include "qspi.h"
+#include "usb_bootloader.h"
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -29,6 +30,7 @@ void SystemClock_Config(void);
 static void CPU_CACHE_Enable(void);
 static void CPU_CACHE_Disable(void);
 static void jumpToAddress(uint32_t address);
+static void startApplication(void);
 
 /**
  * @brief  The application entry point.
@@ -36,33 +38,66 @@ static void jumpToAddress(uint32_t address);
  */
 typedef  void (*pFunction)(void);
 static pFunction JumpToApplication;
+extern MSC_ApplicationTypeDef Appli_state;
 
 int main(void) {
+	uint32_t step = 0;
+
 	CPU_CACHE_Enable();
 	HAL_Init();
 	SystemClock_Config();
 
-//	usb_initialize();
+	usb_initialize();
 
-	/*##-1- Configure Required Memory #########################################*/
-	InitializeExternalFlash();
+	/* Infinite loop */
+	while (1) {
+		usbhost_process();
+		/*check if usb stick enumeration is complete*/
+		if ((500 < step) && !IsUSBHostConnected()) {
+			if (1 == IsValidApplicationPresent()) {
+				InitializeExternalFlash();
+				startApplication();
+			} else {
+				continue;
+				//Invalid Application in external flash
+				//Continue to stay in bootloader
+			}
+		}
+		if (Appli_state == APPLICATION_READY) {
+			if (1 == IsApplicationFileExist()) {
+				if (MEMORY_OK != InitializeExternalFlash()) {
+					//external flash initialization issue, check external flash
+				}
+				if (UPDATE_SUCCESS == UpdateApplicationFromUsb()) {
+					startApplication();
+				} else {
+					//update application failed, try again
+				}
+			} else {
+				//application update file not exist.
+				if (1 == IsValidApplicationPresent()) {
+					InitializeExternalFlash();
+					startApplication();
+				} else {
+					continue;
+					//Invalid Application in external flash
+					//Continue to stay in bootloader
+				}
+			}
+		} else {
+			HAL_Delay(1);
+			step++;
+		}
+	}
+}
 
+static void startApplication(void) {
+	ExternalFlashMemoryMapped();
 	/* Disable CPU L1 cache before jumping to the QSPI code execution */
 	CPU_CACHE_Disable();
 	/* Disable Systick interrupt */
 	SysTick->CTRL = 0;
-
 	jumpToAddress(APPLICATION_ADDRESS);
-
-	/* Infinite loop */
-	while (1) {
-		usb_process();
-//		if (Appli_state == APPLICATION_READY) {
-//			if (MSC_File_Operations() != 0) {
-//
-//			}
-//		}
-	}
 }
 
 static void jumpToAddress(uint32_t address) {
