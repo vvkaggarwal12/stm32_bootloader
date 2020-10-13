@@ -53,16 +53,16 @@ int main(void) {
 	while (1) {
 		usbhost_process();
 		/*check if usb stick enumeration is complete*/
-		if ((500 < step) && !IsUSBHostConnected()) {
-			if (1 == IsValidApplicationPresent()) {
-				InitializeExternalFlash();
-				startApplication();
-			} else {
-				continue;
-				//Invalid Application in external flash
-				//Continue to stay in bootloader
-			}
-		}
+//		if ((500 < step) && !IsUSBHostConnected()) {
+//			if (1 == IsValidApplicationPresent()) {
+//				InitializeExternalFlash();
+//				startApplication();
+//			} else {
+//				continue;
+//				//Invalid Application in external flash
+//				//Continue to stay in bootloader
+//			}
+//		}
 		if (Appli_state == APPLICATION_READY) {
 			if (1 == IsApplicationFileExist()) {
 				if (MEMORY_OK != InitializeExternalFlash()) {
@@ -136,8 +136,8 @@ void SystemClock_Config(void) {
 	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
 
 	/* PLL1 for System Clock */
-	RCC_OscInitStruct.PLL.PLLM = 5;
-	RCC_OscInitStruct.PLL.PLLN = 160;
+	RCC_OscInitStruct.PLL.PLLM = 3;
+	RCC_OscInitStruct.PLL.PLLN = 200;
 	RCC_OscInitStruct.PLL.PLLFRACN = 0;
 	RCC_OscInitStruct.PLL.PLLP = 2;
 	RCC_OscInitStruct.PLL.PLLR = 2;
@@ -149,8 +149,8 @@ void SystemClock_Config(void) {
 
 	/* PLL3 for USB Clock */
 
-	PeriphClkInitStruct.PLL3.PLL3M = 5;
-	PeriphClkInitStruct.PLL3.PLL3N = 96;
+	PeriphClkInitStruct.PLL3.PLL3M = 3;
+	PeriphClkInitStruct.PLL3.PLL3N = 120;
 	PeriphClkInitStruct.PLL3.PLL3P = 2;
 	PeriphClkInitStruct.PLL3.PLL3Q = 10;
 	PeriphClkInitStruct.PLL3.PLL3R = 18;

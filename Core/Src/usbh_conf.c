@@ -62,10 +62,10 @@ void HAL_HCD_MspInit(HCD_HandleTypeDef * hhcd)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* Configure POWER_SWITCH pin */
-    GPIO_InitStruct.Pin = GPIO_PIN_5;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//    GPIO_InitStruct.Pin = GPIO_PIN_5;
+//    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+//    GPIO_InitStruct.Pull = GPIO_NOPULL;
+//    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* Enable USB FS Clocks */
     __HAL_RCC_USB2_OTG_FS_CLK_ENABLE();
@@ -82,60 +82,25 @@ void HAL_HCD_MspInit(HCD_HandleTypeDef * hhcd)
   else if (hhcd->Instance == USB1_OTG_HS)
   {
     /* Configure USB FS GPIOs */
-    __GPIOA_CLK_ENABLE();
     __GPIOB_CLK_ENABLE();
-    __GPIOC_CLK_ENABLE();
-    __GPIOH_CLK_ENABLE();
-    __GPIOI_CLK_ENABLE();
 
-    /* CLK */
-    GPIO_InitStruct.Pin = GPIO_PIN_5;
+    /* Configure DM DP Pins */
+    GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_15;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* D0 */
-    GPIO_InitStruct.Pin = GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* D1 D2 D3 D4 D5 D6 D7 */
-    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_5 |
-      GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
+    GPIO_InitStruct.Pull = GPIO_AF12_OTG1_FS;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /* STP */
-    GPIO_InitStruct.Pin = GPIO_PIN_0;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+    /* Configure ID pin */
+    GPIO_InitStruct.Pin = GPIO_PIN_10;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Alternate = GPIO_AF12_OTG1_FS;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /* NXT */
-    GPIO_InitStruct.Pin = GPIO_PIN_4;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
-    HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
-
-    /* DIR */
-    GPIO_InitStruct.Pin = GPIO_PIN_11;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG2_HS;
-    HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
-    __HAL_RCC_USB1_OTG_HS_ULPI_CLK_ENABLE();
+    __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
 
     /* Enable USB HS Clocks */
-    __HAL_RCC_USB1_OTG_HS_CLK_ENABLE();
+    __HAL_RCC_USB1_OTG_HS_ULPI_CLK_SLEEP_DISABLE();
 
     /* Set USBHS Interrupt priority */
     HAL_NVIC_SetPriority(OTG_HS_IRQn, 6, 0);
@@ -160,8 +125,8 @@ void HAL_HCD_MspDeInit(HCD_HandleTypeDef * hhcd)
   else if (hhcd->Instance == USB1_OTG_HS)
   {
     /* Disable USB HS Clocks */
-    __HAL_RCC_USB1_OTG_HS_CLK_DISABLE();
-    __HAL_RCC_USB1_OTG_HS_ULPI_CLK_DISABLE();
+	  __HAL_RCC_USB1_OTG_HS_CLK_DISABLE();
+//    __HAL_RCC_USB1_OTG_HS_ULPI_CLK_DISABLE();
   }
 }
 
@@ -271,9 +236,9 @@ USBH_StatusTypeDef USBH_LL_Init(USBH_HandleTypeDef * phost)
   hhcd.Init.Host_channels = 11;
   hhcd.Init.dma_enable = 0;
   hhcd.Init.low_power_enable = 0;
-  hhcd.Init.phy_itface = HCD_PHY_ULPI;
+  hhcd.Init.phy_itface = HCD_PHY_EMBEDDED;
   hhcd.Init.Sof_enable = 0;
-  hhcd.Init.speed = HCD_SPEED_HIGH;
+  hhcd.Init.speed = HCD_SPEED_FULL;
   hhcd.Init.vbus_sensing_enable = 0;
   hhcd.Init.use_external_vbus = 1;
   hhcd.Init.lpm_enable = 0;
@@ -485,11 +450,11 @@ USBH_StatusTypeDef USBH_LL_DriverVBUS(USBH_HandleTypeDef * phost, uint8_t state)
   #ifdef USE_USB_FS
   if(state == 0)
   {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+//    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
   }
   else
   {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
   }
 #endif
   HAL_Delay(200);
