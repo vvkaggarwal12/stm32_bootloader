@@ -10,6 +10,7 @@
 #include "usb_bootloader.h"
 
 static FIL fp;
+static uint8_t  __attribute__ ((aligned (0x10))) buffer[QSPI_PAGE_SIZE];
 
 #define APPLICATION_FILEPATH		"0:App.bin"
 
@@ -19,7 +20,7 @@ uint8_t IsApplicationFileExist(void) {
 	}
 	return 1;
 }
-uint8_t buffer[QSPI_PAGE_SIZE];
+
 bootloader_retval_t UpdateApplicationFromUsb(void) {
 	FRESULT res = FR_DENIED;
 	uint32_t br = 0x00, address = 0x00;

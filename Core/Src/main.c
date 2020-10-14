@@ -53,16 +53,16 @@ int main(void) {
 	while (1) {
 		usbhost_process();
 		/*check if usb stick enumeration is complete*/
-//		if ((500 < step) && !IsUSBHostConnected()) {
-//			if (1 == IsValidApplicationPresent()) {
-//				InitializeExternalFlash();
-//				startApplication();
-//			} else {
-//				continue;
-//				//Invalid Application in external flash
-//				//Continue to stay in bootloader
-//			}
-//		}
+		if ((500 < step) && !IsUSBHostConnected()) {
+			if (1 == IsValidApplicationPresent()) {
+				InitializeExternalFlash();
+				startApplication();
+			} else {
+				continue;
+				//Invalid Application in external flash
+				//Continue to stay in bootloader
+			}
+		}
 		if (Appli_state == APPLICATION_READY) {
 			if (1 == IsApplicationFileExist()) {
 				if (MEMORY_OK != InitializeExternalFlash()) {
