@@ -22,6 +22,7 @@
 #include "main.h"
 #include "stm32h7xx_it.h"
 extern HCD_HandleTypeDef hhcd;
+extern PCD_HandleTypeDef hpcd;
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -191,14 +192,23 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 1 */
 }
 
-#ifdef USE_USB_FS
-void OTG_FS_IRQHandler(void)
-#else
+
+
 void OTG_HS_IRQHandler(void)
-#endif
 {
-  HAL_HCD_IRQHandler(&hhcd);
+	HAL_HCD_IRQHandler(&hhcd);
 }
+
+/**
+  * @brief  This function handles USB-On-The-Go FS/HS global interrupt request.
+  * @param  None
+  * @retval None
+  */
+void OTG_FS_IRQHandler(void)
+{
+	HAL_PCD_IRQHandler(&hpcd);
+}
+
 
 /******************************************************************************/
 /* STM32H7xx Peripheral Interrupt Handlers                                    */

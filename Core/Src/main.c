@@ -47,7 +47,11 @@ int main(void) {
 	HAL_Init();
 	SystemClock_Config();
 
-	usb_initialize();
+	usb_device_initialize();
+
+//	HAL_Delay(100);
+
+	usb_host_initialize();
 
 	/* Infinite loop */
 	while (1) {
@@ -92,6 +96,7 @@ int main(void) {
 }
 
 static void startApplication(void) {
+	usb_host_deinitialize();
 	ExternalFlashMemoryMapped();
 	/* Disable CPU L1 cache before jumping to the QSPI code execution */
 	CPU_CACHE_Disable();

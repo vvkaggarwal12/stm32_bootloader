@@ -520,7 +520,7 @@ static uint32_t QSPI_EnableMemoryMappedMode(QSPI_HandleTypeDef *hqspi) {
 	s_command.AlternateBytesSize = QSPI_ALTERNATE_BYTES_8_BITS;
 	s_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
 	s_command.DataMode          = QSPI_DATA_4_LINES;
-	s_command.DummyCycles       = 6;
+	s_command.DummyCycles       = 10;
 	s_command.NbData			= 0;
 	s_command.Address			= 0;
 	s_command.DdrMode           = QSPI_DDR_MODE_DISABLE;

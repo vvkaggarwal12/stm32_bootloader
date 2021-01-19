@@ -10,6 +10,10 @@
 #include "ff_gen_drv.h"
 #include "usbh_diskio.h"
 #include "main.h"
+#include "usbd_core.h"
+#include "usbd_desc.h"
+#include "usbd_cdc.h"
+#include "usbd_cdc_interface.h"
 
 #define LCD_DbgLog(x)
 #define LCD_ErrLog(x)
@@ -22,9 +26,27 @@ char USBDISKPath[4]; /* USB Host logical drive path */
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 MSC_ApplicationTypeDef Appli_state = APPLICATION_IDLE;
 static FATFS USBH_fatfs;
+USBD_HandleTypeDef USBD_Device;
 USBH_HandleTypeDef hUSB_Host;
 
-void usb_initialize(void) {
+void usb_device_initialize(void) {
+	/* Init Device Library */
+	USBD_Init(&USBD_Device, &VCP_Desc, 0);
+
+	/* Add Supported Class */
+	USBD_RegisterClass(&USBD_Device, USBD_CDC_CLASS);
+
+	/* Add CDC Interface Class */
+	USBD_CDC_RegisterInterface(&USBD_Device, &USBD_CDC_fops);
+
+	/* Start Device Process */
+	USBD_Start(&USBD_Device);
+
+	HAL_PWREx_EnableUSBVoltageDetector();
+}
+
+
+void usb_host_initialize(void) {
 	/* Init Host Library */
 	USBH_Init(&hUSB_Host, USBH_UserProcess, 0);
 
@@ -39,6 +61,7 @@ void usb_initialize(void) {
 	HAL_PWREx_EnableUSBVoltageDetector();
 }
 
+
 void usbhost_process(void) {
 	USBH_Process(&hUSB_Host);
 }
@@ -46,6 +69,15 @@ void usbhost_process(void) {
 uint8_t IsUSBHostConnected(void) {
 	return hUSB_Host.device.is_connected;
 }
+
+void usb_host_deinitialize(void) {
+	HAL_PWREx_DisableUSBVoltageDetector();
+	USBH_Stop(&hUSB_Host);
+	USBH_DeInit(&hUSB_Host);
+	USBD_Stop(&USBD_Device);
+	USBD_DeInit(&USBD_Device);
+}
+
 /**
  * @brief  User Process
  * @param  phost: Host Handle

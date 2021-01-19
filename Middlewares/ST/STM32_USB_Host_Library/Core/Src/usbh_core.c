@@ -184,7 +184,7 @@ USBH_StatusTypeDef USBH_DeInit(USBH_HandleTypeDef *phost)
   phost->device.is_connected = 0U;
   phost->device.is_disconnected = 0U;
   phost->device.is_ReEnumerated = 0U;
-
+  USBH_LL_DeInit(phost);
   if (phost->pData != NULL)
   {
     USBH_LL_Stop(phost);
