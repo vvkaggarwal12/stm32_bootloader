@@ -56,10 +56,22 @@ int main(void) {
 	/* Infinite loop */
 	while (1) {
 		usbhost_process();
+		if (1 == isConfDataUpdateRequired()) {
+			if (MEMORY_OK != InitializeExternalFlash()) {
+				//external flash initialization issue, check external flash
+			}
+			if (UPDATE_SUCCESS == updateConfDataToExternalFlash()) {
+				startApplication();
+			} else {
+				startApplication();
+			}
+		}
 		/*check if usb stick enumeration is complete*/
 		if ((500 < step) && !IsUSBHostConnected()) {
 			if (1 == IsValidApplicationPresent()) {
-				InitializeExternalFlash();
+				if (MEMORY_OK != InitializeExternalFlash()) {
+					//external flash initialization issue, check external flash
+				}
 				startApplication();
 			} else {
 				continue;
@@ -80,7 +92,9 @@ int main(void) {
 			} else {
 				//application update file not exist.
 				if (1 == IsValidApplicationPresent()) {
-					InitializeExternalFlash();
+					if (MEMORY_OK != InitializeExternalFlash()) {
+						//external flash initialization issue, check external flash
+					}
 					startApplication();
 				} else {
 					continue;
@@ -98,6 +112,8 @@ int main(void) {
 static void startApplication(void) {
 	usb_host_deinitialize();
 	ExternalFlashMemoryMapped();
+	HAL_Delay(20);
+	getConfDataFromFlashToRAM();
 	/* Disable CPU L1 cache before jumping to the QSPI code execution */
 	CPU_CACHE_Disable();
 	/* Disable Systick interrupt */

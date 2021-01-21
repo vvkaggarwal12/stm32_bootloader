@@ -170,6 +170,11 @@ SECTIONS
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
   } >RAM_D1
+  
+  .conf_section : /* Space before ':' is critical */
+  {
+    *(.conf_section)
+  } > RAM_D3
 
   /* Remove information from the compiler libraries */
   /DISCARD/ :
